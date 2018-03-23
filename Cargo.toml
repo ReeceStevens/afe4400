@@ -1,0 +1,11 @@
+[package]
+authors = ["Reece Stevens <reecestevens24@gmail.com>"]
+name = "afe4400"
+version = "0.1.0"
+
+[dependencies]
+nb = "0.1.1"
+
+[dependencies.embedded-hal]
+version = "0.1.2"
+features = ["unproven"]
