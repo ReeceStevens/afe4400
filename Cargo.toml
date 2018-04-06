@@ -2,6 +2,13 @@
 authors = ["Reece Stevens <reecestevens24@gmail.com>"]
 name = "afe4400"
 version = "0.1.0"
+categories = ["embedded", "no-std"]
+keywords = ["embedded-hal", "embedded-hal-driver"]
+license = "MIT"
+repository = "https://github.com/ReeceStevens/afe4400"
+description = """
+An `embedded-hal` compatible driver for the TI AFE4400 pulse oximetry analog front-end chip.
+"""
 
 [dependencies]
 nb = "0.1.1"
