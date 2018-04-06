@@ -1,4 +1,24 @@
 //! # AFE4400 - an `embedded-hal` compatible driver
+//!
+//! The [AFE4400][afe4400] is a pulse oximetry analog front-end chip by TI. It controls LED switching, has
+//! ambient light cancellation, and other very nice features for pulse oximetry applications.
+//!
+//! The main communication interface for the AFE4400 is via SPI. However, there are also some
+//! digital pins that can be configured for smoother operation; two are required and four are for
+//! additional diagnostic value.
+//!
+//! ## Mandatory
+//! - `adc_pdn`: The powerdown pin; should be held high (not floating!) for the duration of operation.
+//! - `adc_rdy`: The "ADC Ready" pin, indicating a sample is ready for reading.
+//! It is useful to use `adc_rdy` as the driver for an edge-triggered interrupt.
+//!
+//! ## Optional
+//! - `daig_end`: Diagnostics complete
+//! - `adc_done`: ADC conversion complete
+//! - `led_err`: Connection issue with the LEDs
+//! - `sensor_err`: Connection issue with the photodiodes
+//!
+//! [afe4400]: http://www.ti.com/product/afe4400
 #![no_std]
 #![allow(dead_code)]
 
@@ -13,8 +33,10 @@ use hal::digital::{InputPin, OutputPin};
 /* Useful commands */
 const SW_RST: u8 = 0x04;
 
+/// Registers
+///
+/// See p.49 of docs for full register map.
 mod registers {
-    /* See Register Map, p.49 of docs */
     pub const CONTROL0: u8 = 0x00;
     pub const LED2STC: u8 = 0x01;
     pub const LED2ENDC: u8 = 0x02;
@@ -68,23 +90,42 @@ mod registers {
     pub const DIAG: u8 = 0x30;
 }
 
+/// Controller in charge of communication with AFE4400
 pub struct Afe4400<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> {
-    spi: SPI,
-    diag_end: Option<IN>,
-    adc_done: Option<IN>,
-    led_err: Option<IN>,
-    sensor_err: Option<IN>,
-    afe_pdn: OUT
+    pub spi: SPI,
+    pub diag_end: Option<IN>,
+    pub adc_done: Option<IN>,
+    pub led_err: Option<IN>,
+    pub sensor_err: Option<IN>,
+    pub afe_pdn: OUT,
+    pub adc_rdy: IN
 }
 
+/// Possible AFE4400 errors.
+///
+/// Currently, this is simply failing the self-check or passing forward a communication error.
+pub enum Error<E> {
+    SelfCheckFail,
+    Other(E),
+}
+
+impl<E> From<E> for Error<E> {
+    fn from(error: E) -> Self {
+        Error::Other(error)
+    }
+}
 
 type SpiError<SPI> = <SPI as FullDuplex<u8>>::Error;
-
-// TODO Replace these unwraps and unused results with `?` operator once the
-// `nb` crate fix gets released and embedded-hal is updated.
+type AfeError<SPI> = Error<SpiError<SPI>>;
 
 impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
-    pub fn writeData(&mut self, register: u8, data: u32) -> nb::Result<(), SpiError<SPI>> {
+
+    /// Send data to a specified register.
+    ///
+    /// `register` should be a constant defined in `afe4400::registers`.
+    ///
+    /// Can return an SPI error if communication failure occurs.
+    pub fn writeData(&mut self, register: u8, data: u32) -> Result<(), AfeError<SPI>> {
         block!(self.spi.send(register))?;
         let first_transfer = ((data >> 16) & 0xFF) as u8;
         let second_transfer = ((data >> 8) & 0xFF) as u8;
@@ -95,8 +136,13 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
         Ok(())
     }
 
-    pub fn readData(&mut self, register: u8) -> nb::Result<u32, SpiError<SPI>> {
-        self.writeData(registers::CONTROL0, 0x01 as u32);
+    /// Read data from a specified register
+    ///
+    /// `register` should be a constant defined in `afe4400::registers`.
+    ///
+    /// Can return an SPI error if communication failure occurs.
+    pub fn readData(&mut self, register: u8) -> Result<u32, AfeError<SPI>> {
+        self.writeData(registers::CONTROL0, 0x01 as u32)?;
         block!(self.spi.send(register))?;
         let mut register_data: u32 = 0;
         for _ in 0..3 {
@@ -106,7 +152,7 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
         Ok(register_data)
     }
 
-    fn getLedData(&mut self, led_register: u8) -> nb::Result<u32, SpiError<SPI>> {
+    fn getLedData(&mut self, led_register: u8) -> Result<u32, AfeError<SPI>> {
         let mut value = self.readData(led_register)?;
         if value & 0x00200000 != 0 {
             value |= 0xFFD00000;
@@ -114,17 +160,24 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
         Ok(value)
     }
 
-    pub fn getLed1Data(&mut self) -> nb::Result<u32, SpiError<SPI>> {
+    /// Get data from LED1 (IR) after subtracting ambient background.
+    pub fn getLed1Data(&mut self) -> Result<u32, AfeError<SPI>> {
         self.getLedData(registers::LED1_ALED1VAL)
     }
 
-    pub fn getLed2Data(&mut self) -> nb::Result<u32, SpiError<SPI>> {
+    /// Get data from LED2 (Red) after subtracting ambient background.
+    pub fn getLed2Data(&mut self) -> Result<u32, AfeError<SPI>> {
         self.getLedData(registers::LED2_ALED2VAL)
     }
 
+    /// Set the cancellation filter gain resistor `R_f` value
+    ///
+    /// LED current and cancellation filter gain are used to compensate for changing ambient light
+    /// conditions.
+    ///
     /// TIA_AMB_GAIN: RF_LED[2:0] set to 110
-    /// (see p.64 in docs for all Rf options)
-    pub fn setCancellationFilters(&mut self, value: u16) -> nb::Result<(), SpiError<SPI>> {
+    /// (see p.64 in docs for all `R_f` options)
+    pub fn setCancellationFilters(&mut self, value: u16) -> Result<(), AfeError<SPI>> {
         let mut tia_settings = self.readData(registers::TIA_AMB_GAIN)?;
         tia_settings &= !(0x07);
         tia_settings |= (value as u32) | 0x4400;
@@ -132,6 +185,11 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
         Ok(())
     }
 
+    /// Set current sent to LEDs.
+    ///
+    /// LED current and cancellation filter gain are used to compensate for changing ambient light
+    /// conditions.
+    ///
     /// LEDCNTRL (0x22)
     ///   LED1[15:8], LED2[7:0]
     ///  Formula:
@@ -139,13 +197,14 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
     ///      ------------------  *  50 mA = current
     ///           256
     ///
-    pub fn setLedCurrent(&mut self, value: u8) -> nb::Result<u32, SpiError<SPI>> {
+    pub fn setLedCurrent(&mut self, value: u8) -> Result<u32, AfeError<SPI>> {
         let both_leds = ((value as u32) << 8) + value as u32;
         self.writeData(registers::LEDCNTRL, both_leds + 0x010000)?;
         self.readData(registers::LEDCNTRL)
     }
 
-    pub fn defaultPulseTimings(&mut self) -> nb::Result<(), SpiError<SPI>> {
+    /// Recommended default pulse timings according to the AFE4400 data sheet.
+    pub fn defaultPulseTimings(&mut self) -> Result<(), AfeError<SPI>> {
         self.writeData(registers::CONTROL0, 0x000000)?;
         self.writeData(registers::CONTROL1, 0x0102)?; // Enable timers
         self.writeData(registers::CONTROL2, 0x020100)?;
@@ -183,14 +242,21 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
         Ok(())
     }
 
-    pub fn self_check(&mut self) -> nb::Result<bool, SpiError<SPI>> {
+    /// Perform a self check to verify connections and chip clock integrity.
+    ///
+    /// Returns Ok(()) if the self-check passes
+    pub fn self_check(&mut self) -> Result<(), AfeError<SPI>> {
         let original_value = self.readData(registers::CONTROL1)?;
         for _ in 0..5 {
             if self.readData(registers::CONTROL1)? != original_value {
-                return Ok(false)
+                return Err(Error::SelfCheckFail);
             }
         }
-        Ok(self.readData(registers::CONTROL1)? != 0)
+        if self.readData(registers::CONTROL1)? != 0 {
+            Ok(())
+        } else {
+            Err(Error::SelfCheckFail)
+        }
     }
 
 }
