@@ -125,7 +125,7 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
     /// `register` should be a constant defined in `afe4400::registers`.
     ///
     /// Can return an SPI error if communication failure occurs.
-    pub fn writeData(&mut self, register: u8, data: u32) -> Result<(), AfeError<SPI>> {
+    pub fn write_data(&mut self, register: u8, data: u32) -> Result<(), AfeError<SPI>> {
         block!(self.spi.send(register))?;
         let first_transfer = ((data >> 16) & 0xFF) as u8;
         let second_transfer = ((data >> 8) & 0xFF) as u8;
@@ -141,8 +141,8 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
     /// `register` should be a constant defined in `afe4400::registers`.
     ///
     /// Can return an SPI error if communication failure occurs.
-    pub fn readData(&mut self, register: u8) -> Result<u32, AfeError<SPI>> {
-        self.writeData(registers::CONTROL0, 0x01 as u32)?;
+    pub fn read_data(&mut self, register: u8) -> Result<u32, AfeError<SPI>> {
+        self.write_data(registers::CONTROL0, 0x01 as u32)?;
         block!(self.spi.send(register))?;
         let mut register_data: u32 = 0;
         for _ in 0..3 {
@@ -152,8 +152,8 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
         Ok(register_data)
     }
 
-    fn getLedData(&mut self, led_register: u8) -> Result<u32, AfeError<SPI>> {
-        let mut value = self.readData(led_register)?;
+    fn get_led_data(&mut self, led_register: u8) -> Result<u32, AfeError<SPI>> {
+        let mut value = self.read_data(led_register)?;
         if value & 0x00200000 != 0 {
             value |= 0xFFD00000;
         }
@@ -161,13 +161,13 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
     }
 
     /// Get data from LED1 (IR) after subtracting ambient background.
-    pub fn getLed1Data(&mut self) -> Result<u32, AfeError<SPI>> {
-        self.getLedData(registers::LED1_ALED1VAL)
+    pub fn get_led1_data(&mut self) -> Result<u32, AfeError<SPI>> {
+        self.get_led_data(registers::LED1_ALED1VAL)
     }
 
     /// Get data from LED2 (Red) after subtracting ambient background.
-    pub fn getLed2Data(&mut self) -> Result<u32, AfeError<SPI>> {
-        self.getLedData(registers::LED2_ALED2VAL)
+    pub fn get_led2_data(&mut self) -> Result<u32, AfeError<SPI>> {
+        self.get_led_data(registers::LED2_ALED2VAL)
     }
 
     /// Set the cancellation filter gain resistor `R_f` value
@@ -177,11 +177,11 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
     ///
     /// TIA_AMB_GAIN: RF_LED[2:0] set to 110
     /// (see p.64 in docs for all `R_f` options)
-    pub fn setCancellationFilters(&mut self, value: u16) -> Result<(), AfeError<SPI>> {
-        let mut tia_settings = self.readData(registers::TIA_AMB_GAIN)?;
+    pub fn set_cancellation_filters(&mut self, value: u16) -> Result<(), AfeError<SPI>> {
+        let mut tia_settings = self.read_data(registers::TIA_AMB_GAIN)?;
         tia_settings &= !(0x07);
         tia_settings |= (value as u32) | 0x4400;
-        self.writeData(registers::TIA_AMB_GAIN, tia_settings)?;
+        self.write_data(registers::TIA_AMB_GAIN, tia_settings)?;
         Ok(())
     }
 
@@ -197,48 +197,48 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
     ///      ------------------  *  50 mA = current
     ///           256
     ///
-    pub fn setLedCurrent(&mut self, value: u8) -> Result<u32, AfeError<SPI>> {
+    pub fn set_led_current(&mut self, value: u8) -> Result<u32, AfeError<SPI>> {
         let both_leds = ((value as u32) << 8) + value as u32;
-        self.writeData(registers::LEDCNTRL, both_leds + 0x010000)?;
-        self.readData(registers::LEDCNTRL)
+        self.write_data(registers::LEDCNTRL, both_leds + 0x010000)?;
+        self.read_data(registers::LEDCNTRL)
     }
 
     /// Recommended default pulse timings according to the AFE4400 data sheet.
-    pub fn defaultPulseTimings(&mut self) -> Result<(), AfeError<SPI>> {
-        self.writeData(registers::CONTROL0, 0x000000)?;
-        self.writeData(registers::CONTROL1, 0x0102)?; // Enable timers
-        self.writeData(registers::CONTROL2, 0x020100)?;
-        self.writeData(registers::LED2STC, 6050)?;
-        self.writeData(registers::LED2ENDC, 7998)?;
-        self.writeData(registers::LED2LEDSTC, 6000)?;
-        self.writeData(registers::LED2LEDENDC, 7999)?;
-        self.writeData(registers::ALED2STC, 50)?;
-        self.writeData(registers::ALED2ENDC, 1998)?;
-        self.writeData(registers::LED1STC, 2050)?;
-        self.writeData(registers::LED1ENDC, 3998)?;
-        self.writeData(registers::LED1LEDSTC, 2000)?;
-        self.writeData(registers::LED1LEDENDC, 3999)?;
-        self.writeData(registers::ALED1STC, 4050)?;
-        self.writeData(registers::ALED1ENDC, 5998)?;
-        self.writeData(registers::LED2CONVST, 4)?;
-        self.writeData(registers::LED2CONVEND, 1999)?;
-        self.writeData(registers::ALED2CONVST, 2004)?;
-        self.writeData(registers::ALED2CONVEND, 3999)?;
-        self.writeData(registers::LED1CONVST, 4004)?;
-        self.writeData(registers::LED1CONVEND, 5999)?;
-        self.writeData(registers::ALED1CONVST, 6004)?;
-        self.writeData(registers::ALED1CONVEND, 7999)?;
-        self.writeData(registers::ADCRSTSTCT0, 0)?;
-        self.writeData(registers::ADCRSTENDCT0, 3)?;
-        self.writeData(registers::ADCRSTSTCT1, 2000)?;
-        self.writeData(registers::ADCRSTENDCT1, 2003)?;
-        self.writeData(registers::ADCRSTSTCT2, 4000)?;
-        self.writeData(registers::ADCRSTENDCT2, 4003)?;
-        self.writeData(registers::ADCRSTSTCT3, 6000)?;
-        self.writeData(registers::ADCRSTENDCT3, 6003)?;
-        self.writeData(registers::PRPCOUNT, 7999)?;
-        self.setCancellationFilters(0x06)?;
-        self.setLedCurrent(0x1A)?;
+    pub fn default_pulse_timings(&mut self) -> Result<(), AfeError<SPI>> {
+        self.write_data(registers::CONTROL0, 0x000000)?;
+        self.write_data(registers::CONTROL1, 0x0102)?; // Enable timers
+        self.write_data(registers::CONTROL2, 0x020100)?;
+        self.write_data(registers::LED2STC, 6050)?;
+        self.write_data(registers::LED2ENDC, 7998)?;
+        self.write_data(registers::LED2LEDSTC, 6000)?;
+        self.write_data(registers::LED2LEDENDC, 7999)?;
+        self.write_data(registers::ALED2STC, 50)?;
+        self.write_data(registers::ALED2ENDC, 1998)?;
+        self.write_data(registers::LED1STC, 2050)?;
+        self.write_data(registers::LED1ENDC, 3998)?;
+        self.write_data(registers::LED1LEDSTC, 2000)?;
+        self.write_data(registers::LED1LEDENDC, 3999)?;
+        self.write_data(registers::ALED1STC, 4050)?;
+        self.write_data(registers::ALED1ENDC, 5998)?;
+        self.write_data(registers::LED2CONVST, 4)?;
+        self.write_data(registers::LED2CONVEND, 1999)?;
+        self.write_data(registers::ALED2CONVST, 2004)?;
+        self.write_data(registers::ALED2CONVEND, 3999)?;
+        self.write_data(registers::LED1CONVST, 4004)?;
+        self.write_data(registers::LED1CONVEND, 5999)?;
+        self.write_data(registers::ALED1CONVST, 6004)?;
+        self.write_data(registers::ALED1CONVEND, 7999)?;
+        self.write_data(registers::ADCRSTSTCT0, 0)?;
+        self.write_data(registers::ADCRSTENDCT0, 3)?;
+        self.write_data(registers::ADCRSTSTCT1, 2000)?;
+        self.write_data(registers::ADCRSTENDCT1, 2003)?;
+        self.write_data(registers::ADCRSTSTCT2, 4000)?;
+        self.write_data(registers::ADCRSTENDCT2, 4003)?;
+        self.write_data(registers::ADCRSTSTCT3, 6000)?;
+        self.write_data(registers::ADCRSTENDCT3, 6003)?;
+        self.write_data(registers::PRPCOUNT, 7999)?;
+        self.set_cancellation_filters(0x06)?;
+        self.set_led_current(0x1A)?;
         Ok(())
     }
 
@@ -246,13 +246,13 @@ impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
     ///
     /// Returns Ok(()) if the self-check passes
     pub fn self_check(&mut self) -> Result<(), AfeError<SPI>> {
-        let original_value = self.readData(registers::CONTROL1)?;
+        let original_value = self.read_data(registers::CONTROL1)?;
         for _ in 0..5 {
-            if self.readData(registers::CONTROL1)? != original_value {
+            if self.read_data(registers::CONTROL1)? != original_value {
                 return Err(Error::SelfCheckFail);
             }
         }
-        if self.readData(registers::CONTROL1)? != 0 {
+        if self.read_data(registers::CONTROL1)? != 0 {
             Ok(())
         } else {
             Err(Error::SelfCheckFail)
