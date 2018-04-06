@@ -1,5 +1,8 @@
 # AFE4400
 
+
+!(crates-io-shield)[https://img.shields.io/crates/v/afe4400.svg]
+
 The [AFE4400][afe4400] is a pulse oximetry analog front-end chip by TI. It controls LED switching, has
 ambient light cancellation, and other very nice features for pulse oximetry applications.
 
