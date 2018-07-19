@@ -157,6 +157,7 @@ impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
             register_data = register_data << 8;
             register_data |= block!(self.spi.read())? as u32;
         }
+        self.write_data(registers::CONTROL0, 0x00 as u32)?;
         Ok(register_data)
     }
 
