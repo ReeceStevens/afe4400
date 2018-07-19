@@ -26,6 +26,8 @@ extern crate embedded_hal as hal;
 #[macro_use]
 extern crate nb;
 
+use core::fmt::Debug;
+
 use hal::spi::FullDuplex;
 use hal::digital::{InputPin, OutputPin};
 
@@ -104,12 +106,13 @@ pub struct Afe4400<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> {
 /// Possible AFE4400 errors.
 ///
 /// Currently, this is simply failing the self-check or passing forward a communication error.
-pub enum Error<E> {
+#[derive(Debug)]
+pub enum Error<E: Debug> {
     SelfCheckFail,
     Other(E),
 }
 
-impl<E> From<E> for Error<E> {
+impl<E: Debug> From<E> for Error<E> {
     fn from(error: E) -> Self {
         Error::Other(error)
     }
@@ -118,7 +121,12 @@ impl<E> From<E> for Error<E> {
 type SpiError<SPI> = <SPI as FullDuplex<u8>>::Error;
 type AfeError<SPI> = Error<SpiError<SPI>>;
 
-impl<SPI: FullDuplex<u8>, IN: InputPin, OUT: OutputPin> Afe4400<SPI, IN, OUT> {
+impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
+    where SPI: FullDuplex<u8>,
+          IN: InputPin,
+          OUT: OutputPin,
+          <SPI as FullDuplex<u8>>::Error: Debug
+{
 
     /// Send data to a specified register.
     ///
