@@ -1,7 +1,7 @@
 [package]
 authors = ["Reece Stevens <reecestevens24@gmail.com>"]
 name = "afe4400"
-version = "0.2.0"
+version = "0.3.0"
 categories = ["embedded", "no-std"]
 keywords = ["embedded-hal", "embedded-hal-driver"]
 license = "MIT"
