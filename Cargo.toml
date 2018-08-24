@@ -1,7 +1,7 @@
 [package]
 authors = ["Reece Stevens <reecestevens24@gmail.com>"]
 name = "afe4400"
-version = "0.3.0"
+version = "0.3.1"
 categories = ["embedded", "no-std"]
 keywords = ["embedded-hal", "embedded-hal-driver"]
 license = "MIT"
@@ -14,5 +14,5 @@ An `embedded-hal` compatible driver for the TI AFE4400 pulse oximetry analog fro
 nb = "0.1.1"
 
 [dependencies.embedded-hal]
-version = "0.1.2"
+version = "0.2.1"
 features = ["unproven"]
