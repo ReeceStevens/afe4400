@@ -161,22 +161,24 @@ impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
         Ok(register_data)
     }
 
-    fn get_led_data(&mut self, led_register: u8) -> Result<u32, AfeError<SPI>> {
-        let mut value = self.read_data(led_register)?;
+    fn get_led_data(&mut self, led_register: u8) -> Result<i32, AfeError<SPI>> {
+        let mut value = self.read_data(led_register)? as i32;
         if value & 0x00200000 != 0 {
-            value |= 0xFFD00000;
+            value |= 0xFFC00000;
         }
         Ok(value)
     }
 
     /// Get data from LED1 (IR) after subtracting ambient background.
-    pub fn get_led1_data(&mut self) -> Result<u32, AfeError<SPI>> {
+    pub fn get_led1_data(&mut self) -> Result<i32, AfeError<SPI>> {
         self.get_led_data(registers::LED1_ALED1VAL)
+        // self.get_led_data(registers::LED1VAL)
     }
 
     /// Get data from LED2 (Red) after subtracting ambient background.
-    pub fn get_led2_data(&mut self) -> Result<u32, AfeError<SPI>> {
+    pub fn get_led2_data(&mut self) -> Result<i32, AfeError<SPI>> {
         self.get_led_data(registers::LED2_ALED2VAL)
+        // self.get_led_data(registers::LED2VAL)
     }
 
     /// Set the cancellation filter gain resistor `R_f` value
@@ -187,9 +189,16 @@ impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
     /// TIA_AMB_GAIN: RF_LED[2:0] set to 110
     /// (see p.64 in docs for all `R_f` options)
     pub fn set_cancellation_filters(&mut self, value: u16) -> Result<(), AfeError<SPI>> {
-        let mut tia_settings = self.read_data(registers::TIA_AMB_GAIN)?;
-        tia_settings &= !(0x07);
-        tia_settings |= (value as u32) | 0x4400;
+        // let mut tia_settings = self.read_data(registers::TIA_AMB_GAIN)?;
+        // tia_settings &= !(0x07);
+        let cancellation_current: u32 = 0x00 << 16;
+        let stage2en: u32 = 0x00 << 14;
+        let stage2gain: u32 = 0x02 << 8;
+        // let cap_value: u32 = 0x1F << 3;
+        let cap_value: u32 = 0xFF << 3;
+        let tia_settings = (value as u32) | stage2gain | stage2en | cap_value | cancellation_current;
+        // tia_settings |= (value as u32) | 0x054200;
+        // tia_settings |= (value as u32) | 0x004000;
         self.write_data(registers::TIA_AMB_GAIN, tia_settings)?;
         Ok(())
     }
@@ -246,8 +255,8 @@ impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
         self.write_data(registers::ADCRSTSTCT3, 6000)?;
         self.write_data(registers::ADCRSTENDCT3, 6003)?;
         self.write_data(registers::PRPCOUNT, 7999)?;
-        self.set_cancellation_filters(0x06)?;
-        self.set_led_current(0x1A)?;
+        // self.set_cancellation_filters(0x06)?;
+        // self.set_led_current(0x1A)?;
         Ok(())
     }
 
