@@ -262,15 +262,19 @@ impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
     ///
     pub fn set_led_current(&mut self, value: u8) -> Result<u32, AfeError<SPI>> {
         let both_leds = ((value as u32) << 8) + value as u32;
-        self.write_data(registers::LEDCNTRL, both_leds + 0x010000)?;
+        self.write_data(registers::LEDCNTRL, both_leds)?;
         self.read_data(registers::LEDCNTRL)
+    }
+
+    pub fn get_led_current(&mut self) -> Result<u8, AfeError<SPI>> {
+        Ok((self.read_data(registers::LEDCNTRL)? & 0x00FF) as u8)
     }
 
     /// Recommended default pulse timings according to the AFE4400 data sheet.
     pub fn default_pulse_timings(&mut self) -> Result<(), AfeError<SPI>> {
         self.write_data(registers::CONTROL0, 0x000000)?;
         self.write_data(registers::CONTROL1, 0x0102)?; // Enable timers
-        self.write_data(registers::CONTROL2, 0x020100)?;
+        self.write_data(registers::CONTROL2, 0x000100)?;
         self.write_data(registers::LED2STC, 6050)?;
         self.write_data(registers::LED2ENDC, 7998)?;
         self.write_data(registers::LED2LEDSTC, 6000)?;
