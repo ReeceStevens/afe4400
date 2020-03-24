@@ -135,19 +135,32 @@ impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
           <SPI as FullDuplex<u8>>::Error: Debug
 {
 
+    fn spi_send(&mut self, data: u8) -> Result<(), AfeError<SPI>> {
+        block!(self.spi.send(data))?;
+        block!(self.spi.read())?; // Dummy read, toss the result.
+        Ok(())
+    }
+
+    fn spi_read(&mut self) -> Result<u8, AfeError<SPI>> {
+        let dummy = 0_u8;
+        block!(self.spi.send(dummy))?; // Dummy write for full duplex
+        let result = block!(self.spi.read())?;
+        Ok(result)
+    }
+
     /// Send data to a specified register.
     ///
     /// `register` should be a constant defined in `afe4400::registers`.
     ///
     /// Can return an SPI error if communication failure occurs.
     pub fn write_data(&mut self, register: u8, data: u32) -> Result<(), AfeError<SPI>> {
-        block!(self.spi.send(register))?;
+        self.spi_send(register)?;
         let first_transfer = ((data >> 16) & 0xFF) as u8;
         let second_transfer = ((data >> 8) & 0xFF) as u8;
         let third_transfer = (data & 0xFF) as u8;
-        block!(self.spi.send(first_transfer))?;
-        block!(self.spi.send(second_transfer))?;
-        block!(self.spi.send(third_transfer))?;
+        self.spi_send(first_transfer)?;
+        self.spi_send(second_transfer)?;
+        self.spi_send(third_transfer)?;
         Ok(())
     }
 
@@ -158,11 +171,11 @@ impl<SPI, IN, OUT> Afe4400<SPI, IN, OUT>
     /// Can return an SPI error if communication failure occurs.
     pub fn read_data(&mut self, register: u8) -> Result<u32, AfeError<SPI>> {
         self.write_data(registers::CONTROL0, 0x01 as u32)?;
-        block!(self.spi.send(register))?;
+        self.spi_send(register)?;
         let mut register_data: u32 = 0;
         for _ in 0..3 {
             register_data = register_data << 8;
-            register_data |= block!(self.spi.read())? as u32;
+            register_data |= self.spi_read()? as u32;
         }
         self.write_data(registers::CONTROL0, 0x00 as u32)?;
         Ok(register_data)
