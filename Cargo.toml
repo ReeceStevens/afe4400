@@ -14,5 +14,5 @@ An `embedded-hal` compatible driver for the TI AFE4400 pulse oximetry analog fro
 nb = "0.1.1"
 
 [dependencies.embedded-hal]
-version = "0.2.1"
+version = "0.2.3"
 features = ["unproven"]

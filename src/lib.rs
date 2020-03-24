@@ -29,7 +29,7 @@ extern crate nb;
 use core::fmt::Debug;
 
 use hal::spi::FullDuplex;
-use hal::digital::{InputPin, OutputPin};
+use hal::digital::v2::{InputPin, OutputPin};
 
 
 /* Useful commands */
